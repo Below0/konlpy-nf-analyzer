@@ -66,11 +66,11 @@ class Message(faust.Record):
     is_reply: str
 
 nf_topic = app.topic('naver.finance.board.raw', value_type=Message)
-
-@app.agent(nf_topic, sink=['naver.finance.board'])
+target_topic = app.topic('naver.finance.board')
+@app.agent(nf_topic, sink=[target_topic])
 async def finance_board(messages):
     async for msg in messages:
         msg['postive_score'] = score[0][2]
         msg['normal_score'] = score[0][1]
         msg['negative_score'] = score[0][0]
-        yield True
+        yield msg
