@@ -1,9 +1,4 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[9]:
-
-
+import faust
 import json
 from keras_preprocessing.text import tokenizer_from_json
 import konlpy
@@ -53,18 +48,29 @@ def preprocessing(sentence):
     return pad_new
 
 def sentiment_predict(target):
-    score = loaded_model.predict(preprocessing(target)) # 예측
-    print(label[np.argmax(score)])
+    pad_new = preprocessing(target)
+    score = loaded_model.predict(pad_new) # 예측
+    return score
 
+app = faust.App('nf-worker-1', broker='kafka://49.50.174.75:9092')
 
-# In[10]:
+class Message(faust.Record):
+    date: str
+    collected_at: str
+    id: str
+    ip: str
+    title: str
+    body: str
+    good: int
+    bad: int
+    is_reply: str
 
+nf_topic = app.topic('naver.finance.board.raw', value_type=Message)
 
-sentiment_predict("삼성전자 화이팅")
-
-
-# In[ ]:
-
-
-
-
+@app.agent(nf_topic, sink=['naver.finance.board'])
+async def finance_board(messages):
+    async for msg in messages:
+        msg['postive_score'] = score[0][2]
+        msg['normal_score'] = score[0][1]
+        msg['negative_score'] = score[0][0]
+        yield True
