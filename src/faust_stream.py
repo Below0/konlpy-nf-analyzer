@@ -2,7 +2,9 @@ import faust
 import json
 from keras_preprocessing.text import tokenizer_from_json
 import konlpy
+import math
 import re
+import requests
 from konlpy.tag import Okt
 from keras.preprocessing.text import Tokenizer
 from keras_preprocessing.text import tokenizer_from_json
@@ -14,7 +16,7 @@ from keras.models import Sequential
 from keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import load_model
 from keras.callbacks import EarlyStopping, ModelCheckpoint
-
+from faust.serializers import codecs
 
 with open("model.json", "r") as json_file:
     loaded_model_json = json_file.read()
@@ -35,6 +37,21 @@ with open('tokenizer.json') as f:
     data = json.load(f)
     tokenizer = tokenizer_from_json(data)
 
+
+class MyCodec(codecs.Codec):
+
+    def _dumps(self, obj):
+        print(obj, type(obj))
+        del obj['__faust']
+        obj = json.dumps(obj, ensure_ascii=False)
+        print(obj)
+        return obj
+
+    def _loads(self, s):
+        return json.loads(s)
+      
+codecs.register('my_codec', MyCodec())
+
 def preprocessing(sentence):
     temp_X = okt.morphs(sentence, stem=True) # 토큰화
     token_X = []
@@ -52,7 +69,7 @@ def sentiment_predict(target):
     score = loaded_model.predict(pad_new) # 예측
     return score
 
-app = faust.App('nf-worker-1', broker='kafka://49.50.174.75:9092')
+app = faust.App('nf-worker-1', broker='kafka://49.50.174.75:9092', broker_max_poll_record=3)
 
 class Message(faust.Record):
     date: str
@@ -64,13 +81,30 @@ class Message(faust.Record):
     good: int
     bad: int
     is_reply: str
+    positive_score: float = 0.0
+    normal_score: float = 0.0
+    negative_score: float = 0.0
 
 nf_topic = app.topic('naver.finance.board.raw', value_type=Message)
-target_topic = app.topic('naver.finance.board')
-@app.agent(nf_topic, sink=[target_topic])
+target_topic = app.topic('naver.finance.board', value_type=Message)
+target_url = "http://118.67.133.179:8888/target"
+
+
+@app.agent(nf_topic)
 async def finance_board(messages):
     async for msg in messages:
-        msg['postive_score'] = score[0][2]
-        msg['normal_score'] = score[0][1]
-        msg['negative_score'] = score[0][0]
-        yield msg
+        sentence = msg.title+' '+msg.body
+        print(sentence)
+        score = sentiment_predict(sentence)
+        msg.positive_score = round(float(score[0][2]),2)
+        msg.normal_score = round(float(score[0][1]),2)
+        msg.negative_score = round(float(score[0][0]),2)
+        res = msg.asdict()
+        print(res)
+        requests.post(target_url, json=res)
+        # yeild msg
+       
+
+
+if __name__ == '__main__':
+    app.main()
