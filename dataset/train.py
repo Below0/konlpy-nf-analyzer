@@ -59,7 +59,6 @@ for sentence in test_data['content']:
         token_X.append(temp)
     X_test.append(token_X)
 
-print(X_train)
 print('tokenizing complete!')
 # In[73]:
 
@@ -68,6 +67,10 @@ tokenizer = Tokenizer(num_words=max_words)
 tokenizer.fit_on_texts(X_train)
 X_train = tokenizer.texts_to_sequences(X_train)
 X_test = tokenizer.texts_to_sequences(X_test)
+
+tokenizer_json = tokenizer.to_json()
+with open('tokenizer2.json', 'w', encoding='utf-8') as f:
+    f.write(json.dumps(tokenizer_json, ensure_ascii=False))
 
 y_train = []
 y_test = []
@@ -110,6 +113,7 @@ X_test = pad_sequences(X_test, maxlen=max_len)
 
 model = Sequential()
 model.add(Embedding(max_words, 100))
+
 model.add(LSTM(128))
 model.add(Dense(3, activation='softmax'))
 
@@ -117,7 +121,11 @@ es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=7)
 mc = ModelCheckpoint('best_model.h5', monitor='val_acc', mode='max', verbose=1, save_best_only=True)
 
 model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
-history = model.fit(X_train, y_train, epochs=20, callbacks=[es, mc], batch_size=10, validation_split=0.1)
+history = model.fit(X_train, y_train, epochs=10, callbacks=[es, mc], batch_size=10, validation_split=0.2)
+
+model_json = model.to_json()
+with open("model2.json", "w") as json_file :
+    json_file.write(model_json)
 
 # In[78]:
 
