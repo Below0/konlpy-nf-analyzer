@@ -27,8 +27,8 @@ def below_threshold_len(max_len, nested_list):
 
 dataset = pd.read_csv('./dataset.csv')
 
-train_data = dataset[:3000]
-test_data = dataset[3000:]
+train_data = dataset[:3500]
+test_data = dataset[3500:]
 stopwords = ['.', ',', '', '의', '가', '이', '은', '들', '는', '좀', '잘', '걍', '과', '도', '를', '으로', '자', '에', '와', '한', '하다']
 
 # In[72]:
@@ -59,6 +59,7 @@ for sentence in test_data['content']:
         token_X.append(temp)
     X_test.append(token_X)
 
+print(X_train)
 print('tokenizing complete!')
 # In[73]:
 
