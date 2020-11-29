@@ -16,17 +16,24 @@ from keras.preprocessing.sequence import pad_sequences
 from tensorflow.keras.models import load_model
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from faust.serializers import codecs
+import csv
 
 with open("model.json", "r") as json_file:
     loaded_model_json = json_file.read()
 
 loaded_model = model_from_json(loaded_model_json)
-loaded_model.load_weights("best_model.h5")
+loaded_model.load_weights("rmsprop.h5")
 loaded_model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
 
-mecab = Mecab() 
+mecab = Mecab()
 
-stopwords = ['.',',','','의','가', '이', '은', '들', '는', '좀', '잘', '걍', '과', '도', '를','으로', '자', '에', '와', '한', '하다']
+stop_words = []
+with open('common.csv', 'r', encoding='utf-8') as f:
+    rdf = csv.reader(f)
+    for line in rdf:
+        stop_words.append(line[1])
+    f.close()
+
 hangul = re.compile('[^ ㄱ-ㅣ가-힣]+')
 max_len = 200
 
@@ -34,20 +41,6 @@ with open('tokenizer.json') as f:
     data = json.load(f)
     tokenizer = tokenizer_from_json(data)
 
-
-class MyCodec(codecs.Codec):
-
-    def _dumps(self, obj):
-        print(obj, type(obj))
-        del obj['__faust']
-        obj = json.dumps(obj, ensure_ascii=False)
-        print(obj)
-        return obj
-
-    def _loads(self, s):
-        return json.loads(s)
-      
-codecs.register('my_codec', MyCodec())
 label = [-1, 0, 1]
 
 def preprocessing(sentence):
@@ -55,7 +48,7 @@ def preprocessing(sentence):
     token_X = []
     for word in temp_X:
         temp = hangul.sub('',word)
-        if temp == '' or temp in stopwords:
+        if temp == '' or temp in stop_words:
             continue
         token_X.append(temp)
     encoded = tokenizer.texts_to_sequences([token_X])
@@ -66,6 +59,7 @@ def sentiment_predict(target):
     pad_new = preprocessing(target)
     score = loaded_model.predict(pad_new) # 예측
     return score
+
 
 app = faust.App('nf-worker-1', broker='kafka://49.50.174.75:9092', broker_max_poll_record=3)
 
@@ -85,7 +79,6 @@ class Message(faust.Record):
     negative_score: float = 0.0
 
 nf_topic = app.topic('naver.finance.board.raw', value_type=Message)
-target_topic = app.topic('naver.finance.board', value_type=Message)
 target_url = "http://118.67.133.179:8888/second"
 
 
@@ -93,7 +86,6 @@ target_url = "http://118.67.133.179:8888/second"
 async def finance_board(messages):
     async for msg in messages:
         sentence = msg.title+' '+msg.body
-        print(sentence)
         score = sentiment_predict(sentence)
         msg.positive_score = round(float(score[0][2]),2)
         msg.normal_score = round(float(score[0][1]),2)
@@ -102,7 +94,6 @@ async def finance_board(messages):
         res = msg.asdict()
         print(res)
         requests.post(target_url, json=res)
-        # yeild msg
        
 
 if __name__ == '__main__':
