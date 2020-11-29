@@ -1,7 +1,9 @@
 import codecs
 import pandas as pd
 import csv
+from konlpy.tag import *
 
+mecab = Mecab()
 
 def saveCsv(df):
     df.to_csv(('./dataset.csv'), sep=',', na_rep='NaN', encoding='utf=8')
@@ -46,6 +48,8 @@ f.close()
 del contents[0]
 
 for post in contents:
+    token = mecab.morphs(post)
+    print(token)
     pos_cnt = 0
     neg_cnt = 0
 
@@ -70,12 +74,12 @@ for post in contents:
     except Exception as err:
         ratio = 0
 
-    if ratio >= 0.6:
+    if ratio >= 0.7:
         pos_value = 1
-    elif ratio <= 0.4:
+    elif ratio <= 0.3:
         pos_value = -1
     else:
-        pos_value = 0
+        continue
 
     dataset.append({
         "label": pos_value,

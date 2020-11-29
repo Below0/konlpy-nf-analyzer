@@ -11,6 +11,8 @@ from bs4 import BeautifulSoup
 #from kafka import KafkaProducer
 import json
 import re
+from keras_preprocessing.text import tokenizer_from_json
+from keras.models import model_from_json
 import json
 import datetime
 from konlpy.tag import *
@@ -25,11 +27,19 @@ def below_threshold_len(max_len, nested_list):
             cnt = cnt + 1
     print('전체 샘플 중 길이가 %s 이하인 샘플의 비율: %s' % (max_len, (cnt / len(nested_list)) * 100))
 
+
+stop_words = []
+with open('common.csv', 'r', encoding='utf-8') as f:
+    rdf = csv.reader(f)
+    for line in rdf:
+        stop_words.append(line[1])
+    f.close()
+
+
 dataset = pd.read_csv('./dataset.csv')
 
-train_data = dataset[:3500]
-test_data = dataset[3500:]
-stopwords = ['.', ',', '', '의', '가', '이', '은', '들', '는', '좀', '잘', '걍', '과', '도', '를', '으로', '자', '에', '와', '한', '하다']
+train_data = dataset[:12000]
+test_data = dataset[12000:]
 
 # In[72]:
 
@@ -43,7 +53,7 @@ for sentence in train_data['content']:
     token_X = []
     for word in temp_X:
         temp = hangul.sub('', word)
-        if temp == '' or temp in stopwords:
+        if temp == '' or temp in stop_words:
             continue
         token_X.append(temp)
     X_train.append(token_X)
@@ -54,7 +64,7 @@ for sentence in test_data['content']:
     token_X = []
     for word in temp_X:
         temp = hangul.sub('', word)
-        if temp == '' or temp in stopwords:
+        if temp == '' or temp in stop_words:
             continue
         token_X.append(temp)
     X_test.append(token_X)
@@ -62,7 +72,7 @@ for sentence in test_data['content']:
 print('tokenizing complete!')
 # In[73]:
 
-max_words = 50000
+max_words = 35000
 tokenizer = Tokenizer(num_words=max_words)
 tokenizer.fit_on_texts(X_train)
 X_train = tokenizer.texts_to_sequences(X_train)
@@ -74,6 +84,7 @@ with open('tokenizer2.json', 'w', encoding='utf-8') as f:
 
 y_train = []
 y_test = []
+
 for i in range(len(train_data['label'])):
     if train_data['label'].iloc[i] == 1:
         y_train.append([0, 0, 1])
@@ -112,21 +123,30 @@ X_train = pad_sequences(X_train, maxlen=max_len)
 X_test = pad_sequences(X_test, maxlen=max_len)
 
 model = Sequential()
-model.add(Embedding(max_words, 100))
+model.add(Embedding(max_words, 128))
 
 model.add(LSTM(128))
 model.add(Dense(3, activation='softmax'))
 
-es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=7)
-mc = ModelCheckpoint('best_model.h5', monitor='val_acc', mode='max', verbose=1, save_best_only=True)
+opt = 'rmsprop'
+model_name = "model2.json"
+weight_name = "rmsprop.h5"
 
-model.compile(optimizer='rmsprop', loss='categorical_crossentropy', metrics=['acc'])
-history = model.fit(X_train, y_train, epochs=10, callbacks=[es, mc], batch_size=10, validation_split=0.2)
+es = EarlyStopping(monitor='val_loss', mode='min', verbose=1, patience=15)
+mc = ModelCheckpoint(weight_name, monitor='val_acc', mode='max', verbose=1, save_best_only=True)
+
+model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=['acc'])
+history = model.fit(X_train, y_train, epochs=50, callbacks=[es, mc], batch_size=2000, validation_split=0.2)
 
 model_json = model.to_json()
-with open("model2.json", "w") as json_file :
+with open(model_name, "w") as json_file :
     json_file.write(model_json)
-
 # In[78]:
 
+with open(model_name, "r") as json_file:
+    loaded_model_json = json_file.read()
+
+loaded_model = model_from_json(loaded_model_json)
+loaded_model.load_weights(weight_name)
+loaded_model.compile(optimizer=opt, loss='categorical_crossentropy', metrics=['acc'])
 print(model.evaluate(X_test, y_test)[1] * 100)
